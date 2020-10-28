@@ -28,11 +28,12 @@ def getMostProbableTranscriptionFrom(googleJsonResponse):
         best_alternative = sorted(alternatives, key=lambda alternative: alternative['confidence'])[0]
         return best_alternative['transcript']
     except KeyError: #può succedere quando una delle parti nelle quali è stato spezzettato l'audio è troppo corta e non contiene audio utile
+        sys.stderr.write(f"errore risposta {googleJsonResponse}\n")
         return ""
 
 g_transcription_google_url = "https://speech.googleapis.com/v1/speech:recognize?key=AIzaSyAVi14pKukZ8bqNqIaEqCEgr93mmyRMn_E"
 
-slice_time_msec = 60 * 1000
+slice_time_msec = 59 * 1000
 audiofilepart_paths = []
 tmp_audiofileparts_dir = "tmp_audio"
 
@@ -64,13 +65,13 @@ try:
         audiofile_path = mono_filename
 
 
-    if rec.duration_seconds > 60:
+    if rec.duration_seconds > 59:
         if os.path.exists(tmp_audiofileparts_dir) == False:
             os.mkdir(tmp_audiofileparts_dir)
         rec_copy = rec
         part = 0
         while rec_copy.duration_seconds > 0:
-            part_audio = rec_copy[:slice_time_msec] if rec_copy.duration_seconds > 60 else rec_copy[:]
+            part_audio = rec_copy[:slice_time_msec] if rec_copy.duration_seconds > 59 else rec_copy[:]
             part_path = f"{tmp_audiofileparts_dir}/p{part}.wav"
             part_audio.export(part_path,format="wav")
             audiofilepart_paths.append(part_path)
@@ -93,8 +94,11 @@ try:
         jsonPayload = json.loads(requestPayload)
         req = requests.post(g_transcription_google_url,data=requestPayload,headers={'Content-Type':'application/json'})
         json_response = req.json()
+        begin_new_file = not os.path.exists('transcription.txt')
         txt_file = open('transcription.txt','a' if os.path.exists('transcription.txt') else 'w+')
-        txt_file.write(f"*** {args.fileaudio_path_wav} ***\n")
+        if idx == 0:
+            prefix = "" if begin_new_file else "\n\n"
+            txt_file.write(f"{prefix}*** {args.fileaudio_path_wav} ***\n")
         txt_file.write(getMostProbableTranscriptionFrom(json_response)+'\n\n')
         txt_file.close()
     if 'mono_filename' in locals():
