@@ -2,10 +2,12 @@ import argparse
 from pydub import AudioSegment
 import sys
 import os
+import shutil
 import pdb
 import requests
 import base64
 import json
+from tqdm import tqdm
 
 def pathToBase64(path):
     f = open(path,'rb')
@@ -19,6 +21,14 @@ def languageCodeFromAbbr(lang_abbr):
         return 'en-US'
     else:
         return 'it-IT' #default
+
+def getMostProbableTranscriptionFrom(googleJsonResponse):
+    try:
+        alternatives = googleJsonResponse['results'][0]['alternatives']
+        best_alternative = sorted(alternatives, key=lambda alternative: alternative['confidence'])[0]
+        return best_alternative['transcript']
+    except KeyError: #può succedere quando una delle parti nelle quali è stato spezzettato l'audio è troppo corta e non contiene audio utile
+        return ""
 
 g_transcription_google_url = "https://speech.googleapis.com/v1/speech:recognize?key=AIzaSyAVi14pKukZ8bqNqIaEqCEgr93mmyRMn_E"
 
@@ -45,7 +55,14 @@ if len(audiofile_name_parts) > 1 and audiofile_name_parts[1] != "wav":
 
 try:
     rec = AudioSegment.from_wav(audiofile_path)
-    print(rec)
+    if rec.channels == 2:
+        rec_mono = rec.set_channels(1) #convert to mono
+        mono_filename = f"{('.'.join(audiofile_name.split('.')[:-1]))}_mono"
+        # pdb.set_trace()
+        rec_mono.export(mono_filename,format="wav")
+        rec = AudioSegment.from_wav(mono_filename)
+        audiofile_path = mono_filename
+
 
     if rec.duration_seconds > 60:
         if os.path.exists(tmp_audiofileparts_dir) == False:
@@ -64,19 +81,27 @@ try:
         audiofilepart_paths.append(audiofile_path)
     
     base64EncodedFiles = map(pathToBase64,audiofilepart_paths)
-    # pdb.set_trace()
-    # pdb.set_trace()
+    
+    pbar = tqdm(total=len(audiofilepart_paths)+1)
     for idx,fileBase64 in enumerate(base64EncodedFiles):
+        pbar.update(idx+1)
         requestPayload = """
         {"config":{"encoding":"LINEAR16","sampleRateHertz":%d,"languageCode":"%s"},
                             "audio":{"content":"%s"}
                         }
         """ % (rec.frame_rate,languageCodeFromAbbr(args.lang),fileBase64.decode('UTF-8'))
-        # pdb.set_trace()
         jsonPayload = json.loads(requestPayload)
-        # pdb.set_trace()
         req = requests.post(g_transcription_google_url,data=requestPayload,headers={'Content-Type':'application/json'})
-        # print(req.text)
+        json_response = req.json()
+        txt_file = open('transcription.txt','a' if os.path.exists('transcription.txt') else 'w+')
+        txt_file.write(f"*** {args.fileaudio_path_wav} ***\n")
+        txt_file.write(getMostProbableTranscriptionFrom(json_response)+'\n\n')
+        txt_file.close()
+    if 'mono_filename' in locals():
+        os.remove(mono_filename)
+    if os.path.exists(tmp_audiofileparts_dir):
+        shutil.rmtree(tmp_audiofileparts_dir)
+    pbar.close()
 except FileNotFoundError:
     sys.stderr.write("File non trovato")
     sys.exit()
