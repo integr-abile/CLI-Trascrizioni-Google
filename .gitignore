@@ -1,3 +1,4 @@
 tmp_audio
 *.txt
+!requirements.txt
 .DS_Store
