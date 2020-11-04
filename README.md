@@ -1,4 +1,4 @@
-# Python Google Speech API CLI
+# Python Google Speech API CLI (Polinscriptor CLI)
 
 Questo progetto ha lo scopo di fornire un'interfaccia da riga di comando alle API di Speech To Text di Google. 
 
